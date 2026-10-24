@@ -3,6 +3,7 @@
 ## 0.2.3 — 2026-10-24
 
 - Merge overlapping secret matches before redaction and recognize generic and encrypted PEM keys.
+- Match the literal Slack webhook hostname so unrelated hosts are not redacted.
 - Check sets, mapping keys, and Pydantic secret fields; enforce limits after redaction expands text.
 - Close provider iterators when streaming stops early and reset the circuit on a valid cache hit.
 - Allow fractional request rates with a default bucket capacity of at least one request.

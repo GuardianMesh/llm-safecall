@@ -62,6 +62,14 @@ def test_aws_secret_requires_letters_and_digits_within_the_credential():
     assert [finding.name for finding in scan("a1" * 20)] == ["aws_secret_access_key"]
 
 
+@pytest.mark.parametrize("host", ["hooksXslack.com", "hooks.slackXcom", "hooksXslackXcom"])
+def test_slack_webhook_pattern_requires_literal_hostname_dots(host):
+    assert scan(f"https://{host}/services/synthetic") == []
+    assert [finding.name for finding in scan("https://hooks.slack.com/services/synthetic")] == [
+        "slack_webhook"
+    ]
+
+
 def test_secret_scanning_repeated_words_finishes_in_a_bounded_process():
     source = """
 from llm_safecall.secrets import scan
