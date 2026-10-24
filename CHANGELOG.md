@@ -2,6 +2,7 @@
 
 ## 0.2.3 — unreleased
 
+- Scan email redaction candidates in linear time so long malformed prompts cannot stall the caller.
 - Send requested schemas to providers and validate every repair prompt before dispatch.
 - Check decoded structured values and actual Pydantic fields, including excluded and encoded fields.
 - Apply output moderation and reject oversized output before returning a prefix.
