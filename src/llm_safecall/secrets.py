@@ -9,7 +9,7 @@ PATTERNS = {
         r"\b(?=[A-Za-z0-9/+=]{0,39}[A-Za-z])(?=[A-Za-z0-9/+=]{0,39}\d)[A-Za-z0-9/+=]{40}\b"
     ),
     "gcp_api_key": re.compile(r"\bAIza[0-9A-Za-z\-_]{35}\b"),
-    "slack_webhook": re.compile(r"https://hooks.slack.com/services/[A-Za-z0-9_/]+"),
+    "slack_webhook": re.compile(r"https://hooks\.slack\.com/services/[A-Za-z0-9_/]+"),
     "github_pat": re.compile(r"\bghp_[A-Za-z0-9]{36}\b"),
     "private_key_block": re.compile(
         r"-----BEGIN ((?:(?:RSA|EC|DSA|OPENSSH|ENCRYPTED) )?PRIVATE KEY|"
