@@ -2,7 +2,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-# A compact set of high-signal detectors (avoid too many false positives)
+# Recognized credential formats; broad patterns can also match ordinary text.
 PATTERNS = {
     "aws_access_key_id": re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     "aws_secret_access_key": re.compile(r"\b(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9/+=]{40}\b"),

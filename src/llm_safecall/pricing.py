@@ -1,5 +1,5 @@
 PRICING = {
-    # prices are illustrative; adjust to your contracts
+    # Example rates in USD per 1,000 tokens; replace with your provider's rates.
     "openai:gpt-4o-mini": {"input": 0.0003, "output": 0.0012},  # $/1k tokens
     "anthropic:claude-3-5-sonnet-20240620": {"input": 0.003, "output": 0.015},
 }

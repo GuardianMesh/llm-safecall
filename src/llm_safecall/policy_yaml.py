@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import fields
 from pathlib import Path
 
 import yaml
@@ -9,14 +10,20 @@ from .policy import PolicyConfig, PolicyEngine
 
 def load_policy(path: str | Path) -> PolicyEngine:
     data = yaml.safe_load(Path(path).read_text())
-    cfg = PolicyConfig(
-        block_secrets=data.get("block_secrets", True),
-        redact_secrets=data.get("redact_secrets", True),
-        allow_shell_output=data.get("allow_shell_output", False),
-        outbound_url_allowlist=data.get("outbound_url_allowlist", []) or [],
-        json_only_when_schema=data.get("json_only_when_schema", True),
-        max_output_chars=int(data.get("max_output_chars", 10000)),
-        max_input_chars=int(data.get("max_input_chars", 20000)),
-        forbid_injection_phrases=data.get("forbid_injection_phrases", None) or None,
-    )
-    return PolicyEngine(cfg)
+    if data is None:
+        data = {}
+    if not isinstance(data, dict):
+        raise ValueError("Policy must be a YAML mapping")
+    unknown = set(data) - {field.name for field in fields(PolicyConfig)}
+    if unknown:
+        raise ValueError(f"Unknown policy fields: {', '.join(sorted(map(str, unknown)))}")
+    for key, value in data.items():
+        if key in {"outbound_url_allowlist", "forbid_injection_phrases"}:
+            if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+                raise ValueError(f"{key} must be a list of strings")
+        elif key in {"max_input_chars", "max_output_chars"}:
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"{key} must be a positive integer")
+        elif not isinstance(value, bool):
+            raise ValueError(f"{key} must be a boolean")
+    return PolicyEngine(PolicyConfig(**data))

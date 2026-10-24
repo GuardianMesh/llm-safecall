@@ -11,8 +11,10 @@ from .safe_call import SafeCall
 
 def from_env(output=None):
     provider = (os.getenv("LLM_PROVIDER") or "openai").lower()
+    if provider not in {"openai", "anthropic", "mock"}:
+        raise ValueError("LLM_PROVIDER must be openai, anthropic, or mock")
     model = os.getenv("LLM_MODEL") or (
-        "claude-3-5-sonnet-20240620" if provider == "anthropic" else "gpt-4o-mini"
+        "claude-sonnet-4-6" if provider == "anthropic" else "gpt-4o-mini"
     )
 
     allow_shell = (os.getenv("LLM_ALLOW_SHELL") or "false").lower() == "true"

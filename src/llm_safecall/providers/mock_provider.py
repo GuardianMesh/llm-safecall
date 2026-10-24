@@ -10,10 +10,9 @@ MAX_ECHO_LEN = 200
 class MockProvider:
     """Offline provider for tests.
 
-    Deterministic echoes with a tiny "AI":
-    - If the prompt contains 'Repair this to valid', returns a fixed JSON.
-    - Else, if the prompt hints at JSON, returns a trivial malformed JSON payload.
-    - Otherwise, returns an echo-style response.
+    Prompts containing 'as JSON' return malformed JSON to exercise schema repair.
+    Prompts containing 'Repair this to valid' return a fixed flight-plan object.
+    Other prompts are echoed, up to MAX_ECHO_LEN characters.
     """
 
     def __init__(self, model: str = "mock-1") -> None:
@@ -34,15 +33,13 @@ class MockProvider:
 
     def _respond(self, prompt: str) -> str:
         if "Repair this to valid" in prompt:
-            # Return minimal valid JSON for tests
             return (
                 '{"origin":"Berlin","destination":"Tokyo",'
                 '"depart_date":"2025-11-01","airline":null}'
             )
 
-        # Naive hint: if 'as JSON' appears, return slightly malformed JSON occasionally
+        # Deliberately malformed JSON exercises the repair path.
         if "as JSON" in prompt:
             return "{origin:'Berlin', destination:'Tokyo', depart_date:'2025-11-01'}"
 
-        # Default echo-ish
         return "Mock response: " + prompt[:MAX_ECHO_LEN]

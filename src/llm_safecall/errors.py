@@ -7,7 +7,7 @@ class CircuitOpenError(Exception):
 
 
 class PolicyViolationError(Exception):
-    """Raised when org policy or guardrails are violated."""
+    """Raised when input or output fails a configured policy check."""
 
     def __init__(self, message: str, data: dict | None = None):
         super().__init__(message)

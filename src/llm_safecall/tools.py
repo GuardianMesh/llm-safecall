@@ -5,12 +5,16 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
+from .errors import PolicyViolationError
 from .policy import PolicyEngine
 
 
 class ToolRunner:
-    """Run tools with input/output schemas and policy checks.
-    Use this for agent tool-calls to ensure arguments and results pass org policy."""
+    """Validate registered tool arguments and results in the current process.
+
+    Policy checks cover strings in dictionaries and sequences. This does not
+    isolate tool execution or inspect attributes on arbitrary custom objects.
+    """
 
     def __init__(self, policy: PolicyEngine):
         self.policy = policy
@@ -32,28 +36,44 @@ class ToolRunner:
             raise KeyError(f"Tool not found: {name}")
         fn, args_schema, result_schema = self._registry[name]
 
-        # Validate args
+        # Filter before validation so the tool receives arguments satisfying its schema.
+        checked_args = self.policy.check_value(kwargs, output=False)
         if args_schema:
             try:
-                validated = args_schema(**kwargs)
+                validated = args_schema(**checked_args)
             except ValidationError as e:
                 raise ValueError(f"Invalid tool args for {name}: {e}") from e
+            self.policy.check_value(validated, output=False)
             args = validated.model_dump()
+            if self.policy.check_value(args, output=False) != args:
+                raise PolicyViolationError(
+                    "Argument validation produced values that violate policy"
+                )
         else:
-            args = kwargs
-
-        # Policy check on textual args
-        for k, v in list(args.items()):
-            if isinstance(v, str):
-                args[k] = self.policy.pre_call(v)
+            args = checked_args
 
         out = fn(**args)
 
-        # Policy check and validation on result
-        if isinstance(out, str):
-            out = self.policy.post_call(out, schema_expected=bool(result_schema))
+        if isinstance(out, BaseModel):
+            self.policy.check_value(out, output=True)
+            serialized = out.model_dump()
+            if self.policy.check_value(serialized, output=True) != serialized:
+                raise PolicyViolationError(
+                    "Result serialization produced values that violate policy"
+                )
+            if result_schema is None:
+                return out
+            out = serialized
+        out = self.policy.check_value(out, output=True)
 
         if result_schema:
+            if isinstance(out, str):
+                import json
+
+                out = self.policy.check_value(json.loads(out), output=True)
             out = result_schema.model_validate(out)
+            self.policy.check_value(out, output=True)
+            if self.policy.check_value(out.model_dump(), output=True) != out.model_dump():
+                raise PolicyViolationError("Result validation produced values that violate policy")
 
         return out
