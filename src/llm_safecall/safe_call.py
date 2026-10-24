@@ -242,6 +242,7 @@ class SafeCall:
             except (KeyError, TypeError, ValueError, PolicyViolationError, ModerationError):
                 pass
             else:
+                self._record_success()
                 log_json("cache_hit", call_id=call_id)
                 return result, report
         request = cleaned
@@ -310,17 +311,27 @@ class SafeCall:
             if self.rate_limit:
                 self.rate_limit.take(1.0)
             total_chars = 0
+            filtered_chars = 0
             try:
-                for chunk in self.llm.stream(cleaned, timeout_s=self.timeout_s, **self.params):
-                    if not isinstance(chunk, str):
-                        raise TypeError("Provider.stream() must yield strings")
-                    total_chars += len(chunk)
-                    if total_chars > self.policy.cfg.max_output_chars:
-                        raise PolicyViolationError("Stream exceeds max_output_chars")
-                    text = self.policy.post_call(chunk, schema_expected=False)
-                    if self.moderation:
-                        check_output(text)
-                    yield text
+                stream = iter(self.llm.stream(cleaned, timeout_s=self.timeout_s, **self.params))
+                try:
+                    for chunk in stream:
+                        if not isinstance(chunk, str):
+                            raise TypeError("Provider.stream() must yield strings")
+                        total_chars += len(chunk)
+                        if total_chars > self.policy.cfg.max_output_chars:
+                            raise PolicyViolationError("Stream exceeds max_output_chars")
+                        text = self.policy.post_call(chunk, schema_expected=False)
+                        filtered_chars += len(text)
+                        if filtered_chars > self.policy.cfg.max_output_chars:
+                            raise PolicyViolationError("Stream exceeds max_output_chars")
+                        if self.moderation:
+                            check_output(text)
+                        yield text
+                finally:
+                    close = getattr(stream, "close", None)
+                    if callable(close):
+                        close()
             except Exception:
                 self._record_failure()
                 raise

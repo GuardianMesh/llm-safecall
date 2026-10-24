@@ -1,7 +1,15 @@
 # Changelog
 
-## 0.2.3 — unreleased
+## 0.2.3 — 2026-10-24
 
+- Merge overlapping secret matches before redaction and recognize generic and encrypted PEM keys.
+- Check sets, mapping keys, and Pydantic secret fields; enforce limits after redaction expands text.
+- Close provider iterators when streaming stops early and reset the circuit on a valid cache hit.
+- Allow fractional request rates with a default bucket capacity of at least one request.
+- Bound secret-pattern lookaheads so long harmless input does not cause quadratic scanning.
+- Remove example prices; cost estimates require configured rates and complete token usage.
+- Explain CLI schema and policy errors without printing input, file contents, or provider messages.
+- Shorten the quick start and move exact behavior and migration details into reference docs.
 - Scan email redaction candidates in linear time so long malformed prompts cannot stall the caller.
 - Send requested schemas to providers and validate every repair prompt before dispatch.
 - Check decoded structured values and actual Pydantic fields, including excluded and encoded fields.

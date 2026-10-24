@@ -220,6 +220,36 @@ def test_retry_attempts_each_consume_rate_limit_without_retrying_local_denial():
     assert safe.circuit_failures == 0
 
 
+def test_successful_cache_hit_resets_consecutive_failures():
+    provider = ScriptedProvider([ProviderResponse("cached"), TimeoutError("unavailable")])
+    safe = SafeCall(provider, retries=0)
+    assert safe.generate("first") == "cached"
+    with pytest.raises(TimeoutError):
+        safe.generate("second")
+    assert safe.circuit_failures == 1
+    assert safe.generate("first") == "cached"
+    assert safe.circuit_failures == 0
+    assert len(provider.prompts) == 2
+
+
+def test_fractional_request_rate_allows_one_call_then_waits_for_refill(monkeypatch):
+    clock = iter([0.0, 0.0, 5.0, 10.0])
+    monkeypatch.setattr("llm_safecall.rate_limit.time.monotonic", lambda: next(clock))
+    bucket = TokenBucket(0.1)
+    bucket.take()
+    with pytest.raises(RateLimitExceededError):
+        bucket.take()
+    bucket.take()
+
+
+def test_environment_supports_less_than_one_request_per_second(monkeypatch):
+    from llm_safecall import from_env
+
+    monkeypatch.setenv("LLM_PROVIDER", "mock")
+    monkeypatch.setenv("LLM_RATE_PER_SEC", "0.1")
+    assert from_env().generate("Hello") == "Mock response: Hello"
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [
@@ -320,11 +350,50 @@ def test_stream_total_output_limit_applies_across_chunks():
         next(stream)
 
 
+def test_stream_output_limit_includes_redaction_marker_expansion():
+    provider = ScriptedProvider(chunks=["Bearer a", "Bearer b"])
+    safe = SafeCall(provider, policy=PolicyEngine(PolicyConfig(max_output_chars=30)))
+    stream = safe.stream_generate("Hello")
+    assert next(stream) == "[REDACTED_GENERIC_BEARER]"
+    with pytest.raises(PolicyViolationError, match="Stream exceeds"):
+        next(stream)
+
+
 def test_stream_moderation_and_fail_safe():
     safe = SafeCall(
         ScriptedProvider(chunks=["bomb"]), fail_safe=True, fail_safe_return="Unavailable"
     )
     assert list(safe.stream_generate("Hello")) == ["Unavailable"]
+
+
+@pytest.mark.parametrize("stop", ["consumer", "policy", "complete"])
+def test_safe_call_closes_provider_stream_when_iteration_ends(stop):
+    class Provider(MockProvider):
+        closed = False
+
+        def stream(self, prompt, **params):
+            def chunks():
+                try:
+                    yield "first"
+                    yield "bomb" if stop == "policy" else "second"
+                finally:
+                    self.closed = True
+
+            # Retain the iterator so reference counting cannot mask missing cleanup.
+            self.active = chunks()
+            return self.active
+
+    provider = Provider()
+    stream = SafeCall(provider).stream_generate("Hello")
+    assert next(stream) == "first"
+    if stop == "consumer":
+        stream.close()
+    elif stop == "policy":
+        with pytest.raises(ModerationError):
+            next(stream)
+    else:
+        assert list(stream) == ["second"]
+    assert provider.closed
 
 
 @pytest.mark.parametrize("value", [-1, float('nan'), float('inf'), True])

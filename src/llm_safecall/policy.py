@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretBytes, SecretStr
 
 from .errors import PolicyViolationError
 from .sanitize import (
@@ -94,6 +94,8 @@ class PolicyEngine:
                 raise PolicyViolationError(
                     "Secrets detected in prompt", {"findings": [f.name for f in findings]}
                 )
+        if len(prompt) > self.cfg.max_input_chars:
+            raise PolicyViolationError("Prompt too long", {"max": self.cfg.max_input_chars})
         return prompt
 
     def post_call(self, text: str, schema_expected: bool) -> str:
@@ -112,6 +114,8 @@ class PolicyEngine:
         text = strip_disallowed_codeblocks(text, self.cfg.allow_shell_output)
         text = strip_disallowed_commands(text, self.cfg.allow_shell_output)
         text = remove_urls_not_in_allowlist(text, self.cfg.outbound_url_allowlist)
+        if len(text) > self.cfg.max_output_chars:
+            raise PolicyViolationError("Output too long", {"max": self.cfg.max_output_chars})
         if schema_expected and self.cfg.json_only_when_schema:
             # This checks the prefix only; SafeCall parses and validates the JSON.
             stripped = text.strip()
@@ -122,10 +126,11 @@ class PolicyEngine:
     def check_value(self, value, *, output: bool, moderation=None):
         """Check strings in dictionaries and sequences before schema validation."""
         remaining = self.cfg.max_output_chars if output else self.cfg.max_input_chars
+        filtered_remaining = remaining
         nodes = 1000
 
         def visit(item, depth=0):
-            nonlocal remaining, nodes
+            nonlocal remaining, filtered_remaining, nodes
             nodes -= 1
             if depth > 32 or nodes < 0:
                 raise PolicyViolationError("Structured value is too deeply nested or too large")
@@ -135,9 +140,13 @@ class PolicyEngine:
                     raise PolicyViolationError("Structured value exceeds the character limit")
                 if moderation:
                     moderation(item)
-                return (
+                filtered = (
                     self.post_call(item, schema_expected=False) if output else self.pre_call(item)
                 )
+                filtered_remaining -= len(filtered)
+                if filtered_remaining < 0:
+                    raise PolicyViolationError("Structured value exceeds the character limit")
+                return filtered
             if isinstance(item, BaseModel):
                 # Serializers can hide decoded or excluded fields; inspect the stored values too.
                 raw = {
@@ -151,6 +160,11 @@ class PolicyEngine:
                         "Validated model contains values that violate policy"
                     )
                 return item
+            if isinstance(item, (SecretStr, SecretBytes)):
+                raw = item.get_secret_value()
+                if visit(raw, depth + 1) != raw:
+                    raise PolicyViolationError("Secret field contains data that violates policy")
+                return item
             if isinstance(item, (bytes, bytearray)):
                 if len(item) > remaining:
                     raise PolicyViolationError("Structured value exceeds the character limit")
@@ -161,13 +175,17 @@ class PolicyEngine:
             if isinstance(item, dict):
                 checked = {}
                 for key, child in item.items():
-                    if isinstance(key, str) and visit(key, depth + 1) != key:
+                    if visit(key, depth + 1) != key:
                         raise PolicyViolationError("Policy filtering would change a field name")
                     checked[key] = visit(child, depth + 1)
                 return checked
-            if isinstance(item, (list, tuple)):
+            if isinstance(item, (list, tuple, set, frozenset)):
                 checked = [visit(child, depth + 1) for child in item]
-                return tuple(checked) if isinstance(item, tuple) else checked
+                if isinstance(item, tuple):
+                    return tuple(checked)
+                if isinstance(item, (set, frozenset)):
+                    return type(item)(checked)
+                return checked
             return item
 
         return visit(value)

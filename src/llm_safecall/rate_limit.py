@@ -19,7 +19,7 @@ def _positive(value: float, name: str) -> float:
 class TokenBucket:
     def __init__(self, rate_per_sec: float, capacity: float | None = None):
         self.rate = _positive(rate_per_sec, "rate_per_sec")
-        self.capacity = _positive(rate_per_sec if capacity is None else capacity, "capacity")
+        self.capacity = _positive(max(1.0, self.rate) if capacity is None else capacity, "capacity")
         self.tokens = self.capacity
         self.last = time.monotonic()
         self._lock = Lock()

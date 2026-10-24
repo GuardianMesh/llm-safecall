@@ -34,7 +34,7 @@ def from_env(output=None):
         budget = Budget(path=Path(path), daily_limit=daily)
 
     rate = os.getenv("LLM_RATE_PER_SEC")
-    rate_limit = TokenBucket(float(rate), float(rate)) if rate else None
+    rate_limit = TokenBucket(float(rate)) if rate else None
 
     if provider == "openai":
         llm = OpenAIProvider(model=model)
