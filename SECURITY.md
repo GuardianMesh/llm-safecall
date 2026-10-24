@@ -1,14 +1,15 @@
+# Security policy
 
-# Security Policy
+Use [GitHub's private vulnerability reporting form](https://github.com/GuardianMesh/llm-safecall/security/advisories/new)
+for suspected vulnerabilities. If private reporting is unavailable, open an
+issue asking a maintainer for a private contact, without exploit details or
+sensitive data. There is no guaranteed response time.
 
-## Reporting a Vulnerability
-If you believe you've found a security issue, please **do not open a public issue**.
-Email security@your-org.example with details. We'll acknowledge receipt within 2 business days.
+Include the package version, a minimal reproduction, and the expected impact.
+Report provider or SDK vulnerabilities to their maintainers unless the issue is
+specific to this wrapper.
 
-## Scope
-- Source code in this repository
-- Release artifacts built from this repo
-
-## Non-Goals
-- Vulnerabilities in upstream providers/SDKs (report to vendors)
-- Model behavior beyond the guardrails implemented here
+The package checks known patterns and validates schemas. It does not provide
+process isolation, tool authorization, or complete prompt-injection prevention.
+Applications remain responsible for handling model output and protecting the
+credentials, files, and network access available to their tools.

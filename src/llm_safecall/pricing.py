@@ -1,19 +1,31 @@
-PRICING = {
-    # prices are illustrative; adjust to your contracts
-    "openai:gpt-4o-mini": {"input": 0.0003, "output": 0.0012},  # $/1k tokens
-    "anthropic:claude-3-5-sonnet-20240620": {"input": 0.003, "output": 0.015},
-}
+import math
+
+# Caller-supplied rates per 1,000 tokens, in a consistent currency.
+PRICING: dict[str, dict[str, float]] = {}
 
 
 def estimate_cost(vendor_model: str, in_tokens: int | None, out_tokens: int | None) -> float | None:
-    if in_tokens is None and out_tokens is None:
-        return None
+    for count in (in_tokens, out_tokens):
+        if count is not None and (
+            isinstance(count, bool) or not isinstance(count, int) or count < 0
+        ):
+            raise ValueError("Token counts must be non-negative integers")
     p = PRICING.get(vendor_model)
-    if not p:
+    if p is None or in_tokens is None or out_tokens is None:
         return None
-    total = 0.0
-    if in_tokens:
-        total += (in_tokens / 1000.0) * p["input"]
-    if out_tokens:
-        total += (out_tokens / 1000.0) * p["output"]
+    for field in ("input", "output"):
+        rate = p.get(field)
+        if (
+            isinstance(rate, bool)
+            or not isinstance(rate, (float, int))
+            or not math.isfinite(rate)
+            or rate < 0
+        ):
+            raise ValueError("Token rates must be finite non-negative numbers")
+    try:
+        total = (in_tokens / 1000) * p["input"] + (out_tokens / 1000) * p["output"]
+    except OverflowError as error:
+        raise ValueError("Estimated cost exceeds the numeric range") from error
+    if not math.isfinite(total):
+        raise ValueError("Estimated cost exceeds the numeric range")
     return round(total, 6)

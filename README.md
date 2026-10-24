@@ -1,262 +1,122 @@
-# 🧠 llm-safecall (Python)
+# llm-safecall
 
-**Secure, fail-safe, and observable LLM calls for Python.**
+Validate model responses with Pydantic, retry failed requests, and keep a call
+report. Supports OpenAI, Anthropic, and custom providers on Python 3.10+.
 
-`llm-safecall` is a **framework-agnostic, enterprise-grade safety and observability layer** for interacting with large language models (LLMs).  
-It enforces policy guardrails, validates structured outputs, scans for secrets, applies circuit breakers and retries, and guarantees fail-safe operation.
+Use it when several call sites need the same validation and error handling.
+If your application already handles those in a provider SDK or framework,
+you probably don't need another wrapper.
 
-> **Fail-safe by default. Secure by design. Enterprise ready.**
+The text filters match known patterns. They can miss attacks and reject harmless
+text. Tool permissions, approvals, and process isolation belong in the
+application; this package does not enforce them.
 
----
+## Install
 
-## 🚀 Why use `llm-safecall`
-
-| Problem | Solution |
-|----------|-----------|
-| Prompt injection or data exfiltration | Policy engine with prompt heuristics, secret scanning, and sanitization |
-| Invalid or unstructured outputs | Schema-based validation (Pydantic v2) with auto-repair and JSON-only enforcement |
-| Hallucinated shell commands or URLs | Output sanitization + URL allowlists |
-| Sensitive data exposure | Automatic redaction and structured logs |
-| Network instability | Retries with jitter + circuit breaker |
-| High latency or cost | Local caching + budget & rate limiting |
-| App-breaking exceptions | **Fail-safe mode** ensures graceful recovery |
-
-> **Predictable. Auditable. Secure.**
-
----
-
-## ⚙️ Installation
-
-```bash
-pip install llm-safecall
-# or for development / optional providers:
-pip install -e ".[dev]"
-pip install ".[openai]" ".[anthropic]"
+```sh
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install 'llm-safecall[openai]'
 ```
 
-Requires **Python ≥3.10**.
+Use the `anthropic` extra for Anthropic, or install `llm-safecall` without extras
+to use your own provider. On Windows, activate with
+`.venv\Scripts\Activate.ps1`.
 
----
+For changes in **0.2.3**, see the
+[changelog](https://github.com/GuardianMesh/llm-safecall/blob/main/CHANGELOG.md)
+and [migration notes](https://github.com/GuardianMesh/llm-safecall/blob/main/docs/migration.md).
 
-## ✨ Quickstart
+## Validate a response
+
+Set `OPENAI_API_KEY` and `LLM_MODEL` to a model available to your account.
 
 ```python
-from pydantic import BaseModel
-from llm_safecall import SafeCall, OpenAIProvider, PolicyEngine, PolicyConfig
+import os
 
-class Output(BaseModel):
+from pydantic import BaseModel
+from llm_safecall import OpenAIProvider, SafeCall
+
+
+class Summary(BaseModel):
     title: str
     summary: str
 
-policy = PolicyEngine(PolicyConfig(
-    outbound_url_allowlist=["https://docs.company.com/"],
-    allow_shell_output=False,
-))
 
 safe = SafeCall(
-    llm=OpenAIProvider(model="gpt-4o-mini"),
-    output=Output,
-    policy=policy,
+    OpenAIProvider(model=os.environ["LLM_MODEL"]),
+    output=Summary,
     timeout_s=15,
     retries=2,
-    redact=["email", "phone"],
 )
-
-result = safe.generate("Return a JSON with keys title and summary.")
-print(result.model_dump())         # validated Output
-print(result._report.model_dump()) # observability info
+result = safe.generate('Return a title and summary about unit tests.')
+print(result.model_dump())
+print(result._report.model_dump())
 ```
 
----
+The schema is included in the prompt. Invalid JSON or a schema mismatch gets
+one repair call; a policy rejection raises immediately. Requests can incur
+charges, including retries and repairs.
 
-## 🔒 Fail-Safe Guarantee
+Without `output=`, the result is a string with the same `_report` attribute.
+To check installation without credentials:
 
-`llm-safecall` **never breaks your code.**
-
-| Scenario | Result |
-|-----------|---------|
-| Validation fails | Returns `{}` or fallback value |
-| Provider error | Returns safe fallback |
-| Policy violation | Returns sanitized fallback |
-| Redaction triggered | Sensitive data removed |
-| All fails | Returns quietly, logs structured event |
-
-> **Worst case:** nothing happens.  
-> **Best case:** you get a secure, validated, policy-compliant result.
-
----
-
-## 🧱 Policy Engine
-
-Policies can be defined in **YAML** or **Python** — enforcing safety both **before** and **after** LLM calls.
-
-### Example YAML
-```yaml
-allowed_urls:
-  - "https://docs.mycompany.com"
-disallowed_patterns:
-  - "os.system"
-  - "subprocess"
-  - "open('"
+```sh
+LLM_PROVIDER=mock llm-safecall --prompt "Hello"
 ```
 
-### Example Python config
-```python
-from llm_safecall import PolicyEngine, PolicyConfig
+## Handle errors
 
-policy = PolicyEngine(PolicyConfig(
-    outbound_url_allowlist=[
-        "https://intranet.company.com/",
-        "https://docs.company.com/",
-    ],
-    allow_shell_output=False,
-    max_input_chars=20000,
-    max_output_chars=10000,
-))
-```
+Calls raise by default. Catch errors where your application can decide whether
+to retry later, show a message, or abandon the operation. Set `retries=0` if
+another layer already retries requests.
 
-Load from file:
+For a display-only fallback, opt in explicitly:
 
 ```python
-from llm_safecall import load_policy
-policy = load_policy("policy.yml")
+safe = SafeCall(
+    OpenAIProvider(model=os.environ["LLM_MODEL"]),
+    output=Summary,
+    fail_safe=True,
+    fail_safe_return="Summary unavailable",
+)
+result = safe.generate("Summarize the release notes.")
+if isinstance(result, str):
+    print(result)
+else:
+    print(result.title)
 ```
 
----
+A fallback is always a string, even with a schema. It is not a validated result.
 
-## 🧩 Key Features
+## Configure checks
 
-### ✅ Safety & Policy
-- Prompt-injection detection (`reveal system prompt`, `ignore instructions`, etc.)
-- Secret scanning (AWS/GCP keys, Slack tokens, GitHub PATs)
-- Output sanitization (blocks shell commands, restricts URLs)
-- Redaction for sensitive fields (e.g. phone numbers, emails)
-- JSON-only enforcement when schema is defined
+Pass `policy=load_policy("policy.yml")` to load a
+[policy file](https://github.com/GuardianMesh/llm-safecall/blob/main/policy.yml.example).
+Use `redact=["email", "phone"]` for input redaction. Settings from the process
+environment are available through `from_env()`; it does not load `.env` files.
 
-### ⚙️ Reliability
-- Retries with exponential jitter
-- Circuit breaker with cooldown
-- Timeout control
-- Local caching for consistent results
+Streaming checks individual chunks. A secret or other pattern split across
+chunks can pass through. Use `generate()` when the complete response must pass
+validation before anything is displayed or executed.
 
-### 📊 Observability
-- Structured JSON logs (`event=llm_call_start|end|error|cache_hit`)
-- Unique `call_id` per call
-- Attached `CallReport` (latency, tokens, model)
-- SIEM/ELK-friendly log output
+The [behavior reference](https://github.com/GuardianMesh/llm-safecall/blob/main/docs/behavior.md)
+covers defaults, retries, streaming, tools, reports, budgets, caches, and the CLI.
+Read the [migration notes](https://github.com/GuardianMesh/llm-safecall/blob/main/docs/migration.md)
+before reusing an old cache or the pricing helper.
 
-### 💰 Governance
-- Optional daily **budget caps**
-- Token bucket **rate limiter**
-- Redaction + logging control for compliance
+## Development
 
----
-
-## 🌊 Streaming (guarded)
-
-```python
-for chunk in safe.stream_generate("Explain quantum encryption."):
-    print(chunk, end="", flush=True)
-```
-
-If any error or policy violation occurs, it yields a fallback token and ends gracefully — **no crash, no broken coroutine.**
-
----
-
-## 🤖 For Agents & Copilots
-
-> ### ⚠️ Mandatory wrapper for copilots and orchestrators
-> All AI agents and code copilots must route LLM calls through `SafeCall`.  
-> This enforces policy compliance, prevents unsafe tool calls, blocks secret leakage, and guarantees JSON correctness.
-
-```python
-safe = SafeCall(OpenAIProvider(model="gpt-4o-mini"), fail_safe=True)
-res = safe.generate("Suggest a shell command to deploy my app.")
-print(res.value)
-```
-
-If the response violates your org policy or produces disallowed content, you get a safe fallback — your copilot continues running safely.
-
----
-
-## 🧰 Provider Adapters
-
-| Provider | Model | Package | Status |
-|-----------|--------|----------|---------|
-| OpenAI | `gpt-4o-mini` | `openai` | ✅ |
-| Anthropic | `claude-3-5-sonnet-20240620` | `anthropic` | ✅ |
-| Mock | local dev / CI | built-in | ✅ |
-
-> Pass API keys via environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`)  
-> or directly in constructor.
-
----
-
-## ⚡ Environment-based Setup
-
-```python
-from llm_safecall import from_env
-# env: LLM_PROVIDER=openai|anthropic|mock, LLM_MODEL=..., OPENAI_API_KEY=..., etc.
-safe = from_env(output=None)
-```
-
----
-
-## 🧪 Tool Sandbox Example
-
-```python
-from pydantic import BaseModel
-from llm_safecall import ToolRunner, PolicyEngine, PolicyConfig
-
-class Args(BaseModel):
-    url: str
-
-def fetch(url: str) -> str:
-    return f"Fetched {url}"
-
-tr = ToolRunner(PolicyEngine(PolicyConfig(outbound_url_allowlist=['https://example.com/'])))
-tr.register("fetch", fetch, Args, None)
-print(tr.call("fetch", url="https://example.com/ok"))
-```
-
----
-
-## 🧩 Development & Contribution
-
-### Run tests
-```bash
-pytest -v
-```
-
-### Build & publish
-```bash
+```sh
+python -m pip install -e '.[dev]'
+ruff check .
+ruff format --check .
+pytest --cov=llm_safecall --cov-fail-under=85
 python -m build
-twine upload dist/*
+python -m twine check dist/*
+python scripts/check_package.py dist/*.whl
 ```
 
-### Contribute
-Pull requests are welcome — new providers, richer policies, and better telemetry are encouraged.
-
----
-
-## 📦 Repository & Metadata
-
-- **GitHub:** https://github.com/VODuda/llm-safecall
-- **PyPI:** https://pypi.org/project/llm-safecall
-- **License:** MIT
-- **Author:** https://github.com/VODuda
-
-[![PyPI version](https://img.shields.io/pypi/v/llm-safecall.svg)](https://pypi.org/project/llm-safecall)
-[![GitHub stars](https://img.shields.io/github/stars/VODuda/llm-safecall.svg)](https://github.com/VODuda/llm-safecall)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-
----
-
-## 🧩 Summary
-
-`llm-safecall` is a **drop-in safety, observability, and compliance layer** for LLM applications.
-
-> **Fail-safe by default.**  
-> **Secure by design.**  
-> **Observable and auditable.**  
-> **Enterprise ready.**
+[Contributing](https://github.com/GuardianMesh/llm-safecall/blob/main/CONTRIBUTING.md)
+· [Security reports](https://github.com/GuardianMesh/llm-safecall/blob/main/SECURITY.md)
+· [MIT license](LICENSE)
