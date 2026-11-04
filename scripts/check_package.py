@@ -70,6 +70,11 @@ assert result.origin == "Berlin"
 assert result._report.input_tokens is not None
 '''
         run([str(binary), "-c", source], root, env)
+        example = root / "validated_response.py"
+        example.write_text(
+            (Path(__file__).resolve().parents[1] / "examples" / "validated_response.py").read_text()
+        )
+        run([str(binary), str(example)], root, env)
         cli = environment / ("Scripts/llm-safecall.exe" if os.name == "nt" else "bin/llm-safecall")
         assert run([str(cli), "--help"], root, env).stdout.startswith("usage:")
         assert run([str(cli), "--prompt", "Hello"], root, env).stdout == "Mock response: Hello\n"

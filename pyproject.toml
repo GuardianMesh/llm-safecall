@@ -5,7 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "llm-safecall"
 version = "0.2.3"
-description = "Policy checks, schema validation, retries, and logs for Python model calls."
+description = "Validate LLM responses with Pydantic, retry failed model calls and inspect call reports in Python."
+keywords = ["llm", "pydantic", "structured-output", "schema-validation", "retries", "ai-agents"]
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
