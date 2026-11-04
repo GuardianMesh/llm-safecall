@@ -1,7 +1,11 @@
 # llm-safecall
 
-Validate model responses with Pydantic, retry failed requests, and keep a call
+Validate LLM responses with Pydantic, retry failed model calls, and keep a call
 report. Supports OpenAI, Anthropic, and custom providers on Python 3.10+.
+
+Try the [no-key Pydantic walkthrough](https://github.com/GuardianMesh/llm-safecall/blob/main/docs/validated-responses.md) for a local
+example of response validation, transient retries, schema repair and display-only
+fallback using the published package.
 
 Use it when several call sites need the same validation and error handling.
 If your application already handles those in a provider SDK or framework,
@@ -104,6 +108,16 @@ The [behavior reference](https://github.com/GuardianMesh/llm-safecall/blob/main/
 covers defaults, retries, streaming, tools, reports, budgets, caches, and the CLI.
 Read the [migration notes](https://github.com/GuardianMesh/llm-safecall/blob/main/docs/migration.md)
 before reusing an old cache or the pricing helper.
+
+## Related packages
+
+For Zod validation in TypeScript, see
+[SafeCall Node](https://github.com/GuardianMesh/llm-safecall-node). For resource-scoped
+agent tool permissions and authenticated approvals, see the separate TypeScript
+[Agent Guard packages](https://github.com/ShieldaAI/agent-guard). For advisory
+monitoring, see [Security Watch](https://github.com/ShieldaAI/security-watch).
+The [package selection guide](https://github.com/ShieldaAI/agent-guard/blob/main/docs/package-guide.md)
+explains which component fits each task.
 
 ## Development
 
